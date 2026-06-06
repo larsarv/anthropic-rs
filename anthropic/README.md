@@ -241,7 +241,8 @@ let cached_prompt = ContentBlock::text("...long system context...")
 - `ContentBlock` constructors cover base64 / URL images, base64 / URL /
   inline text documents, tool-use + tool-result (ok and error), thinking
   (with optional signature), and plain text.
-- `ThinkingConfig::enabled(budget)` turns on extended thinking;
+- `ThinkingConfig::enabled(budget)` turns on fixed-budget extended thinking;
+  `ThinkingConfig::adaptive()` enables adaptive thinking on supported models;
   `ServiceTier::StandardOnly` opts out of priority routing.
 
 ### 5. count_tokens, list_models, get_model

@@ -154,6 +154,17 @@ mod tests {
     }
 
     #[test]
+    fn from_messages_request_preserves_adaptive_thinking() {
+        let req = MessagesRequestBuilder::new("claude", vec![Message::user("hi")], 100)
+            .thinking(ThinkingConfig::adaptive())
+            .build()
+            .unwrap();
+
+        let ct = CountTokensRequest::from_messages_request(&req);
+        assert_eq!(ct.thinking, Some(ThinkingConfig::adaptive()));
+    }
+
+    #[test]
     fn builder_rejects_empty_messages() {
         let err = CountTokensRequestBuilder::new("m", vec![]).build().unwrap_err();
         assert!(format!("{err}").contains("messages"));

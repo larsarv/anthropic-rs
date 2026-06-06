@@ -443,12 +443,18 @@ pub enum ToolChoice {
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum ThinkingConfig {
     Enabled { budget_tokens: u32 },
+    Adaptive,
     Disabled,
 }
 
 impl ThinkingConfig {
     pub fn enabled(budget_tokens: u32) -> Self {
         Self::Enabled { budget_tokens }
+    }
+
+    /// Enable adaptive thinking.
+    pub fn adaptive() -> Self {
+        Self::Adaptive
     }
 
     pub fn disabled() -> Self {
@@ -956,6 +962,11 @@ mod tests {
     }
 
     #[test]
+    fn thinking_config_adaptive_serializes() {
+        roundtrip(&ThinkingConfig::adaptive(), json!({"type": "adaptive"}));
+    }
+
+    #[test]
     fn service_tier_serializes_snake_case() {
         roundtrip(&ServiceTier::StandardOnly, json!("standard_only"));
     }
@@ -1028,6 +1039,16 @@ mod tests {
         assert_eq!(req.thinking, Some(ThinkingConfig::enabled(1024)));
         assert_eq!(req.service_tier, Some(ServiceTier::Auto));
         assert!(matches!(req.system, Some(SystemPrompt::Text(_))));
+    }
+
+    #[test]
+    fn messages_request_builder_accepts_adaptive_thinking() {
+        let req = MessagesRequestBuilder::new("claude", vec![Message::user("hi")], 512)
+            .thinking(ThinkingConfig::adaptive())
+            .build()
+            .unwrap();
+
+        assert_eq!(req.thinking, Some(ThinkingConfig::adaptive()));
     }
 
     #[test]
