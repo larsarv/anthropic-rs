@@ -438,27 +438,75 @@ pub enum ToolChoice {
     None,
 }
 
+/// Controls how thinking content is returned in API responses.
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingDisplay {
+    /// Return summarized thinking text in thinking blocks.
+    Summarized,
+    /// Return thinking blocks with an empty `thinking` field while preserving
+    /// the encrypted `signature` for multi-turn continuity.
+    Omitted,
+}
+
 /// Extended-thinking configuration attached to a request.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum ThinkingConfig {
-    Enabled { budget_tokens: u32 },
-    Adaptive,
+    /// Fixed-budget extended thinking.
+    Enabled {
+        /// Maximum number of tokens allocated to thinking.
+        budget_tokens: u32,
+        /// Optional control over whether returned thinking is summarized or omitted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display: Option<ThinkingDisplay>,
+    },
+    /// Adaptive thinking, where Claude decides when and how much to think.
+    Adaptive {
+        /// Optional control over whether returned thinking is summarized or omitted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display: Option<ThinkingDisplay>,
+    },
+    /// Disable extended thinking.
     Disabled,
 }
 
 impl ThinkingConfig {
+    /// Enable fixed-budget extended thinking.
     pub fn enabled(budget_tokens: u32) -> Self {
-        Self::Enabled { budget_tokens }
+        Self::Enabled { budget_tokens, display: None }
+    }
+
+    /// Enable fixed-budget extended thinking and control how thinking is returned.
+    pub fn enabled_with_display(budget_tokens: u32, display: ThinkingDisplay) -> Self {
+        Self::Enabled { budget_tokens, display: Some(display) }
     }
 
     /// Enable adaptive thinking.
     pub fn adaptive() -> Self {
-        Self::Adaptive
+        Self::Adaptive { display: None }
     }
 
+    /// Enable adaptive thinking and control how thinking is returned.
+    pub fn adaptive_with_display(display: ThinkingDisplay) -> Self {
+        Self::Adaptive { display: Some(display) }
+    }
+
+    /// Disable extended thinking.
     pub fn disabled() -> Self {
         Self::Disabled
+    }
+
+    /// Set how thinking content is returned for enabled or adaptive thinking.
+    ///
+    /// Disabled thinking is returned unchanged because the API does not accept
+    /// `display` when there is no thinking content to display.
+    pub fn with_display(mut self, display: ThinkingDisplay) -> Self {
+        match &mut self {
+            Self::Enabled { display: slot, .. } | Self::Adaptive { display: slot } => *slot = Some(display),
+            Self::Disabled => {}
+        }
+        self
     }
 }
 
@@ -1009,6 +1057,41 @@ mod tests {
     }
 
     #[test]
+    fn thinking_display_serializes_documented_values() {
+        roundtrip(&ThinkingDisplay::Summarized, json!("summarized"));
+        roundtrip(&ThinkingDisplay::Omitted, json!("omitted"));
+    }
+
+    #[test]
+    fn thinking_config_adaptive_serializes_display() {
+        roundtrip(
+            &ThinkingConfig::adaptive_with_display(ThinkingDisplay::Omitted),
+            json!({"type": "adaptive", "display": "omitted"}),
+        );
+    }
+
+    #[test]
+    fn thinking_config_enabled_serializes_display() {
+        roundtrip(
+            &ThinkingConfig::enabled_with_display(1024, ThinkingDisplay::Summarized),
+            json!({"type": "enabled", "budget_tokens": 1024, "display": "summarized"}),
+        );
+    }
+
+    #[test]
+    fn thinking_config_with_display_updates_supported_modes() {
+        assert_eq!(
+            ThinkingConfig::adaptive().with_display(ThinkingDisplay::Summarized),
+            ThinkingConfig::adaptive_with_display(ThinkingDisplay::Summarized)
+        );
+        assert_eq!(
+            ThinkingConfig::enabled(512).with_display(ThinkingDisplay::Omitted),
+            ThinkingConfig::enabled_with_display(512, ThinkingDisplay::Omitted)
+        );
+        assert_eq!(ThinkingConfig::disabled().with_display(ThinkingDisplay::Omitted), ThinkingConfig::disabled());
+    }
+
+    #[test]
     fn effort_serializes_documented_values() {
         roundtrip(&Effort::Low, json!("low"));
         roundtrip(&Effort::Medium, json!("medium"));
@@ -1110,15 +1193,15 @@ mod tests {
     }
 
     #[test]
-    fn messages_request_builder_serializes_adaptive_thinking_with_effort() {
+    fn messages_request_builder_serializes_adaptive_thinking_with_display_and_effort() {
         let req = MessagesRequestBuilder::new("claude", vec![Message::user("hi")], 512)
-            .thinking(ThinkingConfig::adaptive())
+            .thinking(ThinkingConfig::adaptive_with_display(ThinkingDisplay::Omitted))
             .effort(Effort::Medium)
             .build()
             .unwrap();
 
         let value = serde_json::to_value(&req).unwrap();
-        assert_eq!(value["thinking"], json!({"type": "adaptive"}));
+        assert_eq!(value["thinking"], json!({"type": "adaptive", "display": "omitted"}));
         assert_eq!(value["output_config"], json!({"effort": "medium"}));
     }
 

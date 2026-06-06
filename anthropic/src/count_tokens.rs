@@ -131,7 +131,7 @@ pub struct CountTokensResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::MessagesRequestBuilder;
+    use crate::types::{MessagesRequestBuilder, ThinkingDisplay};
     use serde_json::json;
 
     #[test]
@@ -156,12 +156,12 @@ mod tests {
     #[test]
     fn from_messages_request_preserves_adaptive_thinking() {
         let req = MessagesRequestBuilder::new("claude", vec![Message::user("hi")], 100)
-            .thinking(ThinkingConfig::adaptive())
+            .thinking(ThinkingConfig::adaptive_with_display(ThinkingDisplay::Omitted))
             .build()
             .unwrap();
 
         let ct = CountTokensRequest::from_messages_request(&req);
-        assert_eq!(ct.thinking, Some(ThinkingConfig::adaptive()));
+        assert_eq!(ct.thinking, Some(ThinkingConfig::adaptive_with_display(ThinkingDisplay::Omitted)));
     }
 
     #[test]
