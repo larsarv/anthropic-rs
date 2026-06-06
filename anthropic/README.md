@@ -208,10 +208,12 @@ println!("{}", response.text());
 ### 4. Prompt caching, extended thinking, and image / document blocks
 
 ```rust
-use anthropic::types::{CacheControl, ContentBlock, Message, MessagesRequestBuilder, Role, ServiceTier, ThinkingConfig};
+use anthropic::types::{
+    CacheControl, ContentBlock, Effort, Message, MessagesRequestBuilder, Role, ServiceTier, ThinkingConfig,
+};
 
 let request = MessagesRequestBuilder::new(
-    "claude-3-5-sonnet-20240620",
+    "claude-opus-4-8",
     vec![
         Message::new(
             Role::User,
@@ -225,7 +227,8 @@ let request = MessagesRequestBuilder::new(
     1024,
 )
 .system("You are a careful analyst.")
-.thinking(ThinkingConfig::enabled(2048))
+.thinking(ThinkingConfig::adaptive())
+.effort(Effort::Medium)
 .service_tier(ServiceTier::Auto)
 .tools(vec![]) // add tool schemas as needed
 .build()?;
@@ -243,6 +246,8 @@ let cached_prompt = ContentBlock::text("...long system context...")
   (with optional signature), and plain text.
 - `ThinkingConfig::enabled(budget)` turns on fixed-budget extended thinking;
   `ThinkingConfig::adaptive()` enables adaptive thinking on supported models;
+  `.effort(Effort::Medium)` serializes `output_config: { effort: "medium" }`
+  to guide adaptive thinking depth and overall response token spend;
   `ServiceTier::StandardOnly` opts out of priority routing.
 
 ### 5. count_tokens, list_models, get_model

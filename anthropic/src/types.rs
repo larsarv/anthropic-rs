@@ -462,6 +462,32 @@ impl ThinkingConfig {
     }
 }
 
+/// Effort level for Claude's response generation.
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Effort {
+    Low,
+    Medium,
+    High,
+    #[serde(rename = "xhigh")]
+    XHigh,
+    Max,
+}
+
+/// Output configuration attached to a request.
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct OutputConfig {
+    /// Soft guidance for how many tokens Claude should spend responding.
+    pub effort: Effort,
+}
+
+impl OutputConfig {
+    /// Configure the request with an effort level.
+    pub fn effort(effort: Effort) -> Self {
+        Self { effort }
+    }
+}
+
 /// Quality-of-service tier for a request.
 #[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -496,6 +522,8 @@ pub struct MessagesRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<ThinkingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_config: Option<OutputConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<ServiceTier>,
     /// Per-request retry policy. Carried in memory only; never serialized.
     #[serde(skip, default)]
@@ -517,6 +545,7 @@ pub struct MessagesRequestBuilder {
     tools: Option<Vec<Tool>>,
     tool_choice: Option<ToolChoice>,
     thinking: Option<ThinkingConfig>,
+    output_config: Option<OutputConfig>,
     service_tier: Option<ServiceTier>,
     retry_policy: RetryPolicy,
 }
@@ -588,6 +617,18 @@ impl MessagesRequestBuilder {
 
     pub fn thinking(mut self, thinking: ThinkingConfig) -> Self {
         self.thinking = Some(thinking);
+        self
+    }
+
+    /// Configure output behavior such as response effort.
+    pub fn output_config(mut self, output_config: OutputConfig) -> Self {
+        self.output_config = Some(output_config);
+        self
+    }
+
+    /// Set the effort level for this request.
+    pub fn effort(mut self, effort: Effort) -> Self {
+        self.output_config = Some(OutputConfig::effort(effort));
         self
     }
 
@@ -671,6 +712,7 @@ impl MessagesRequestBuilder {
             tools: self.tools,
             tool_choice: self.tool_choice,
             thinking: self.thinking,
+            output_config: self.output_config,
             service_tier: self.service_tier,
             retry_policy: self.retry_policy,
         })
@@ -967,6 +1009,20 @@ mod tests {
     }
 
     #[test]
+    fn effort_serializes_documented_values() {
+        roundtrip(&Effort::Low, json!("low"));
+        roundtrip(&Effort::Medium, json!("medium"));
+        roundtrip(&Effort::High, json!("high"));
+        roundtrip(&Effort::XHigh, json!("xhigh"));
+        roundtrip(&Effort::Max, json!("max"));
+    }
+
+    #[test]
+    fn output_config_serializes_effort() {
+        roundtrip(&OutputConfig::effort(Effort::Medium), json!({"effort": "medium"}));
+    }
+
+    #[test]
     fn service_tier_serializes_snake_case() {
         roundtrip(&ServiceTier::StandardOnly, json!("standard_only"));
     }
@@ -1026,6 +1082,7 @@ mod tests {
             .top_k(40)
             .system("be helpful")
             .thinking(ThinkingConfig::enabled(1024))
+            .effort(Effort::Medium)
             .service_tier(ServiceTier::Auto)
             .tools(vec![Tool::new("t", "d", json!({}))])
             .tool_choice(ToolChoice::Auto)
@@ -1037,6 +1094,7 @@ mod tests {
         assert_eq!(req.top_p, Some(0.9));
         assert_eq!(req.top_k, Some(40));
         assert_eq!(req.thinking, Some(ThinkingConfig::enabled(1024)));
+        assert_eq!(req.output_config, Some(OutputConfig::effort(Effort::Medium)));
         assert_eq!(req.service_tier, Some(ServiceTier::Auto));
         assert!(matches!(req.system, Some(SystemPrompt::Text(_))));
     }
@@ -1052,6 +1110,29 @@ mod tests {
     }
 
     #[test]
+    fn messages_request_builder_serializes_adaptive_thinking_with_effort() {
+        let req = MessagesRequestBuilder::new("claude", vec![Message::user("hi")], 512)
+            .thinking(ThinkingConfig::adaptive())
+            .effort(Effort::Medium)
+            .build()
+            .unwrap();
+
+        let value = serde_json::to_value(&req).unwrap();
+        assert_eq!(value["thinking"], json!({"type": "adaptive"}));
+        assert_eq!(value["output_config"], json!({"effort": "medium"}));
+    }
+
+    #[test]
+    fn messages_request_builder_accepts_output_config() {
+        let req = MessagesRequestBuilder::new("claude", vec![Message::user("hi")], 512)
+            .output_config(OutputConfig::effort(Effort::XHigh))
+            .build()
+            .unwrap();
+
+        assert_eq!(req.output_config, Some(OutputConfig::effort(Effort::XHigh)));
+    }
+
+    #[test]
     fn messages_request_skips_none_fields_in_serialization() {
         let req = MessagesRequestBuilder::new("m", vec![Message::user("hi")], 10).build().unwrap();
         let value = serde_json::to_value(&req).unwrap();
@@ -1061,6 +1142,7 @@ mod tests {
         assert!(obj.contains_key("max_tokens"));
         assert!(!obj.contains_key("temperature"));
         assert!(!obj.contains_key("thinking"));
+        assert!(!obj.contains_key("output_config"));
         assert!(!obj.contains_key("service_tier"));
         // `retry_policy` is an in-memory transport setting — it must not leak
         // onto the wire under any circumstance.

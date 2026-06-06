@@ -40,8 +40,9 @@
 //!   into a fully materialized [`types::MessagesResponse`].
 //! - [`run_tool_loop`] to drive a tool-use conversation end-to-end.
 //! - Prompt-caching (`CacheControl`), extended thinking (`ThinkingConfig`),
-//!   service tier, image / document blocks, and all other modern request
-//!   fields are supported on [`types::MessagesRequestBuilder`].
+//!   response effort (`Effort` / `OutputConfig`), service tier, image /
+//!   document blocks, and all other modern request fields are supported on
+//!   [`types::MessagesRequestBuilder`].
 //! - Per-call retry override via [`RetryPolicy`] —
 //!   `MessagesRequestBuilder::backoff`, `no_retries`, and `retry_policy`
 //!   let individual calls opt out of retries on interactive paths or
